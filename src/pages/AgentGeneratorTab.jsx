@@ -389,11 +389,11 @@ export default function AgentGeneratorTab({ refreshAgent }) {
                             <textarea 
                                 rows="3" 
                                 readOnly 
-                                value={`<script src="http://localhost:5000/widget.js" data-agent-id="${agentData._id}" async></script>`} 
+                                value={`<script src="http://https://agentic-ai-website-driver.vercel.app//widget.js" data-agent-id="${agentData._id}" async></script>`} 
                                 className="w-full p-3.5 bg-slate-950 text-emerald-400 font-mono text-xs rounded-xl border border-border outline-none resize-none"
                             ></textarea>
                             <button 
-                                onClick={() => copyCDNCode(`<script src="http://localhost:5000/widget.js" data-agent-id="${agentData._id}" async></script>`)} 
+                                onClick={() => copyCDNCode(`<script src="http://https://agentic-ai-website-driver.vercel.app//widget.js" data-agent-id="${agentData._id}" async></script>`)} 
                                 className="absolute top-3 right-3 px-3 py-1.5 bg-sky-500 text-slate-950 rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer hover:bg-sky-400 transition"
                             >
                                 <Copy className="w-3.5 h-3.5" /> Copy CDN

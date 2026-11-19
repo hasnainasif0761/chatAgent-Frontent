@@ -402,7 +402,7 @@ export default function BusinessDetailPage() {
                                                 <td className="p-3 text-right">
                                                     {item.slip ? (
                                                         <a
-                                                            href={`http://localhost:5000/${item.slip}`}
+                                                            href={`http://https://agentic-ai-website-driver.vercel.app//${item.slip}`}
                                                             target="_blank"
                                                             rel="noreferrer"
                                                             className="px-3 py-1 bg-primary text-primary-foreground rounded-lg font-bold text-[11px] hover:opacity-90"

@@ -809,7 +809,7 @@ export default function SuperadminDashboard() {
                                                 </div>
                                             </div>
                                             {historyItem.slip ? (
-                                                <a href={`http://localhost:5000/${historyItem.slip}`} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-primary text-primary-foreground font-bold rounded-lg text-xs hover:opacity-90">View Slip</a>
+                                                <a href={`http://https://agentic-ai-website-driver.vercel.app//${historyItem.slip}`} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-primary text-primary-foreground font-bold rounded-lg text-xs hover:opacity-90">View Slip</a>
                                             ) : (
                                                 <span className="text-muted-foreground italic text-[11px]">No Slip Attached</span>
                                             )}
@@ -822,7 +822,7 @@ export default function SuperadminDashboard() {
                                         <span className="font-bold uppercase text-amber-600 px-2 py-0.5 bg-amber-500/10 rounded">{selectedBusiness.planType} Plan</span>
                                         <span className="text-muted-foreground ml-2 text-[11px]">(Active Payment Slip)</span>
                                     </div>
-                                    <a href={`http://localhost:5000/${selectedBusiness.paymentSlip}`} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-primary text-primary-foreground font-bold rounded-lg text-xs hover:opacity-90">View Slip</a>
+                                    <a href={`http://https://agentic-ai-website-driver.vercel.app//${selectedBusiness.paymentSlip}`} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-primary text-primary-foreground font-bold rounded-lg text-xs hover:opacity-90">View Slip</a>
                                 </div>
                             ) : (
                                 <div className="p-4 bg-muted/30 rounded-xl text-center text-xs text-muted-foreground">No payment slips or history recorded yet.</div>
