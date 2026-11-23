@@ -191,7 +191,7 @@ export default function PendingExpiredBusinessesPage() {
     const buildSlipUrl = (slipPath) => {
         if (!slipPath) return '';
         if (slipPath.startsWith('http')) return slipPath;
-        return `https://agentic-ai-website-driver.vercel.app/${slipPath.replace(/^\/+/, '')}`;
+        return `https://agentic-ai-website-driver.vercel.app${slipPath.replace(/^\/+/, '')}`;
     };
 
     const handleSidebarTabChange = (tab) => {
