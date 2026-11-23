@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import API from '../services/api';
 import { toast } from 'react-toastify';
@@ -10,17 +10,17 @@ export default function DashboardLayout() {
     const [stats, setStats] = useState({});
     const [recentSetups, setRecentSetups] = useState([]);
     const [agent, setAgent] = useState(null);
+    const [subscription, setSubscription] = useState(null);
     const [analyticsSessions, setAnalyticsSessions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isDarkMode, setIsDarkMode] = useState(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme) {
-        return savedTheme === 'dark';
-    }
-    // Default theme White (Light mode) rahegi agar localStorage mein kuch na ho
-    localStorage.setItem('theme', 'light');
-    return false;
-});
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme) {
+            return savedTheme === 'dark';
+        }
+        localStorage.setItem('theme', 'light');
+        return false;
+    });
     const [activeSystemBroadcast, setActiveSystemBroadcast] = useState(null);
 
     const userData = JSON.parse(localStorage.getItem("user") || '{}');
@@ -62,10 +62,15 @@ export default function DashboardLayout() {
     const fetchDashboardData = async () => {
         try {
             setLoading(true);
-            const [statsRes, setupsRes] = await Promise.all([
+            const [statsRes, setupsRes, subRes] = await Promise.all([
                 API.get('/dashboard/stats'),
-                API.get('/dashboard/recent-setups')
+                API.get('/dashboard/recent-setups'),
+                API.get('/subscription/status').catch(() => ({ data: null }))
             ]);
+
+            if (subRes?.data?.success && subRes.data.subscription) {
+                setSubscription(subRes.data.subscription);
+            }
 
             if (statsRes.data) {
                 setStats(statsRes.data);
@@ -127,11 +132,14 @@ export default function DashboardLayout() {
         );
     }
 
+    const effectivePlanStatus = subscription?.planStatus || agent?.planStatus;
+
     return (
         <div className="flex min-h-screen bg-background text-foreground font-sans">
-            {/* Sidebar Component */}
-            <Sidebar 
-                planStatus={agent?.planStatus}
+            {/* Sidebar Component: locks only on 30-day expiry or pending_approval */}
+            <Sidebar
+                planStatus={effectivePlanStatus}
+                subscription={subscription}
                 toggleDarkMode={toggleDarkMode}
                 isDarkMode={isDarkMode}
             />
@@ -139,13 +147,25 @@ export default function DashboardLayout() {
             {/* Main Content Area */}
             <main className="flex-1 p-6 md:p-8 overflow-y-auto max-w-full">
                 <TopAlertBanner
-                    planStatus={agent?.planStatus}
+                    planStatus={effectivePlanStatus}
                     pendingPaymentDetails={agent?.pendingPaymentDetails}
                     broadcast={activeSystemBroadcast}
                 />
-                
-                {/* Outlet passes context to all nested child routes */}
-                <Outlet context={{ stats, recentSetups, agent, analyticsSessions, fetchDashboardData, handleLogout, handleViewHistory, userName }} />
+
+                {/* Outlet passes context (including live subscription) to all nested child routes */}
+                <Outlet
+                    context={{
+                        stats,
+                        recentSetups,
+                        agent,
+                        subscription,
+                        analyticsSessions,
+                        fetchDashboardData,
+                        handleLogout,
+                        handleViewHistory,
+                        userName
+                    }}
+                />
             </main>
         </div>
     );

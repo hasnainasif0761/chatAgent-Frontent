@@ -15,6 +15,8 @@ import AgentGeneratorTab from './pages/AgentGeneratorTab';
 import RecentSetupsTab from './pages/RecentSetupsTab';
 import PlansPage from './pages/PlansPage';
 import BusinessDetailPage from './pages/BusinessDetailPage';
+import PendingExpiredBusinessesPage from './pages/PendingExpiredBusinessesPage';
+import ChatWorkspaceTab from './pages/ChatWorkspaceTab';
 
 // Wrapper components for nested outlet context routing
 function OverviewTabWrapper() {
@@ -42,6 +44,11 @@ function PlansPageWrapper() {
     return <PlansPage user={agent} />;
 }
 
+function ChatWorkspaceTabWrapper() {
+    const { agent, fetchDashboardData } = useOutletContext();
+    return <ChatWorkspaceTab agent={agent} refreshAgent={fetchDashboardData} />;
+}
+
 // Protected Route for Regular Users
 const ProtectedRoute = ({ children }) => {
     const token = localStorage.getItem('token');
@@ -63,11 +70,11 @@ const AdminProtectedRoute = ({ children }) => {
 export default function App() {
     return (
         <Routes>
-            <Route path='*' element={<NotFoundPage/>} />
+            <Route path="*" element={<NotFoundPage />} />
             <Route path="/landing" element={<LandingPage />} />
             <Route path="/" element={<Navigate to="/landing" replace />} />
             <Route path="/authentication" element={<AuthPage />} />
-            
+
             {/* Regular User Dashboard with Nested Sub-Routes */}
             <Route
                 path="/dashboard/*"
@@ -84,34 +91,7 @@ export default function App() {
                 <Route path="recent" element={<RecentSetupsTabWrapper />} />
                 <Route path="plans" element={<PlansPageWrapper />} />
                 <Route path="profile" element={<UserProfile />} />
-                
-                {/* AI Chat Workspace tab route */}
-                <Route path="workspace" element={
-                    <div className="space-y-6 max-w-5xl mx-auto">
-                        <div>
-                            <h1 className="text-xl font-bold tracking-tight">AI Agent Workspace</h1>
-                            <p className="text-xs text-muted-foreground mt-0.5">Contextual query testing environment connected with your database schema</p>
-                        </div>
-                        <div className="bg-card border border-border p-6 rounded-xl h-[480px] flex flex-col justify-between shadow-xs">
-                            <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-                                <div className="bg-muted p-3.5 rounded-xl max-w-lg text-xs text-foreground border border-border">
-                                    <span className="font-bold text-sky-500 block mb-1">AI Assistant Ready:</span>
-                                    Ask any data-related question. The model uses your selected tables and database schema automatically.
-                                </div>
-                            </div>
-                            <div className="flex gap-2 pt-3 border-t border-border">
-                                <input 
-                                    type="text" 
-                                    placeholder="Type your data query..." 
-                                    className="flex-1 bg-background border border-border rounded-lg px-3.5 py-2.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary" 
-                                />
-                                <button className="px-5 py-2.5 bg-primary text-primary-foreground font-bold text-xs rounded-lg hover:opacity-90 transition cursor-pointer">
-                                    Send Query
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                } />
+                <Route path="workspace" element={<ChatWorkspaceTabWrapper />} />
             </Route>
 
             {/* Superadmin Routes */}
@@ -124,7 +104,22 @@ export default function App() {
                     </AdminProtectedRoute>
                 }
             />
-            <Route path="/admin/businesses/:userId" element={<BusinessDetailPage />} />
+            <Route
+                path="/admin/businesses/:userId"
+                element={
+                    <AdminProtectedRoute>
+                        <BusinessDetailPage />
+                    </AdminProtectedRoute>
+                }
+            />
+            <Route
+                path="/admin/businesses/pending-expired"
+                element={
+                    <AdminProtectedRoute>
+                        <PendingExpiredBusinessesPage />
+                    </AdminProtectedRoute>
+                }
+            />
         </Routes>
     );
 }

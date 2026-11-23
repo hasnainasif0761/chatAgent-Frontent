@@ -1,40 +1,95 @@
-import React, { useEffect, useState } from 'react';
-import { Server, Table, Database, Bolt, Timer, MessageSquare, LogOut, History, X, Loader2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import {
+    Server,
+    Table,
+    Database,
+    Bolt,
+    Timer,
+    MessageSquare,
+    LogOut,
+    History,
+    X,
+    Loader2,
+    Bell,
+    AlertTriangle,
+    Clock,
+    CheckCircle2,
+    ArrowUpRight,
+    Infinity as InfinityIcon
+} from 'lucide-react';
 import { Line, Doughnut } from 'react-chartjs-2';
-import { 
-    Chart as ChartJS, 
-    CategoryScale, 
-    LinearScale, 
-    PointElement, 
-    LineElement, 
-    ArcElement, 
-    Title, 
-    Tooltip, 
-    Legend 
+import {
+    Chart as ChartJS,
+    CategoryScale,
+    LinearScale,
+    PointElement,
+    LineElement,
+    ArcElement,
+    Title,
+    Tooltip,
+    Legend
 } from 'chart.js';
 import API from '../services/api';
+import QuotaAlertBanner from '../components/QuotaAlertBanner';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend);
 
-export default function OverviewTab({ stats, analyticsSessions, onLogout, onViewHistory, userName }) {
+export default function OverviewTab(props) {
+    const outletContext = useOutletContext() || {};
+    const stats = props.stats || outletContext.stats;
+    const analyticsSessions = props.analyticsSessions || outletContext.analyticsSessions;
+    const onLogout = props.onLogout || outletContext.handleLogout;
+    const userName = props.userName || outletContext.userName || 'User';
+
+    const navigate = useNavigate();
+    const bellRef = useRef(null);
+
     const [liveStats, setLiveStats] = useState(stats || {});
     const [sessions, setSessions] = useState(analyticsSessions || []);
+    const [subscription, setSubscription] = useState(outletContext.subscription || null);
     const [loading, setLoading] = useState(false);
 
-    // 🟢 Modal & Chat History State
+    // Notification Bell State
+    const [bellOpen, setBellOpen] = useState(false);
+
+    // Modal & Chat History State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedSession, setSelectedSession] = useState(null);
     const [chatHistory, setChatHistory] = useState([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
 
     useEffect(() => {
+        if (outletContext.subscription) {
+            setSubscription(outletContext.subscription);
+        }
+    }, [outletContext.subscription]);
+
+    useEffect(() => {
+        const handleOutsideClick = (e) => {
+            if (bellRef.current && !bellRef.current.contains(e.target)) {
+                setBellOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleOutsideClick);
+        return () => document.removeEventListener('mousedown', handleOutsideClick);
+    }, []);
+
+    useEffect(() => {
         const fetchOverviewData = async () => {
             try {
                 setLoading(true);
-                const statsRes = await API.get('/dashboard/stats');
+                const [statsRes, subRes] = await Promise.all([
+                    API.get('/dashboard/stats'),
+                    API.get('/subscription/status').catch(() => ({ data: null }))
+                ]);
+
+                if (subRes?.data?.success && subRes.data.subscription) {
+                    setSubscription(subRes.data.subscription);
+                }
+
                 if (statsRes.data) {
                     setLiveStats(statsRes.data.stats || statsRes.data || {});
-                    
                     const agentId = statsRes.data.agent?._id || statsRes.data.agentId;
                     if (agentId) {
                         const analyticsRes = await API.get(`/dashboard/chat-analytics/${agentId}`);
@@ -53,7 +108,69 @@ export default function OverviewTab({ stats, analyticsSessions, onLogout, onView
         fetchOverviewData();
     }, []);
 
-    // 🟢 Handle View History Click
+    const isUnlimited = Boolean(subscription?.isUnlimited) || subscription?.planType === 'golden';
+    const remainingChatsDisplay = isUnlimited
+        ? 'Unlimited'
+        : (subscription?.remainingChats ?? 0);
+
+    // Build Tenant Notification List (30-Day Expiry, Quota Exhausted, 5-Day Pre-Expiry, & Recent Logs)
+    const tenantNotifications = [];
+    if (subscription) {
+        if (subscription.isDateExpired || subscription.planStatus === 'expired') {
+            tenantNotifications.push({
+                id: 'expired-alert',
+                type: 'danger',
+                title: '30-Day Plan Validity Expired',
+                message: 'Your 30-day cycle ended and customer AI chat is paused until you resubscribe.',
+                time: subscription.planExpiresAt ? new Date(subscription.planExpiresAt).toLocaleDateString() : 'Expired'
+            });
+        } else if (!isUnlimited && subscription.isQuotaExhausted) {
+            tenantNotifications.push({
+                id: 'quota-alert',
+                type: 'danger',
+                title: 'Chat Quota Exhausted (0 Chats Left)',
+                message: `Your ${String(subscription.planType || '').toUpperCase()} chat quota is finished (${subscription.daysRemaining ?? 0}d left in cycle). Resubscribe or upgrade to resume customer chat.`,
+                time: 'Action Required'
+            });
+        } else if ((subscription.daysRemaining ?? 30) <= 5) {
+            tenantNotifications.push({
+                id: '5day-warning',
+                type: 'warning',
+                title: `Plan Expiring in ${subscription.daysRemaining} Day(s)`,
+                message: isUnlimited
+                    ? 'Renew or upgrade now to add your remaining days into the next 30-day cycle.'
+                    : 'Resubscribe or upgrade now so your remaining days and unused chats carry over into the next cycle.',
+                time: `${subscription.daysRemaining}d left`
+            });
+        }
+
+        if (subscription.lastNotification?.message) {
+            tenantNotifications.push({
+                id: 'last-notif',
+                type: 'info',
+                title: 'Subscription Update',
+                message: subscription.lastNotification.message,
+                time: subscription.lastNotification.sentAt
+                    ? new Date(subscription.lastNotification.sentAt).toLocaleString()
+                    : 'Recent'
+            });
+        }
+
+        (subscription.subscriptionLogs || []).slice(0, 4).forEach((log, idx) => {
+            tenantNotifications.push({
+                id: `log-${idx}`,
+                type: 'log',
+                title: `${String(log.action || 'Update').toUpperCase()} (${String(log.toPlan || '').toUpperCase()})`,
+                message: log.note,
+                time: log.createdAt ? new Date(log.createdAt).toLocaleDateString() : ''
+            });
+        });
+    }
+
+    const urgentAlertCount = tenantNotifications.filter(
+        (n) => n.type === 'danger' || n.type === 'warning'
+    ).length;
+
     const handleViewHistory = async (session) => {
         setSelectedSession(session);
         setIsModalOpen(true);
@@ -62,7 +179,6 @@ export default function OverviewTab({ stats, analyticsSessions, onLogout, onView
         try {
             const res = await API.get(`/dashboard/visitor-chats/${session.visitorId}`);
             if (res.data && res.data.success) {
-                console.log(res.data)
                 setChatHistory(res.data.chatHistory || []);
             }
         } catch (err) {
@@ -70,29 +186,22 @@ export default function OverviewTab({ stats, analyticsSessions, onLogout, onView
         } finally {
             setLoadingHistory(false);
         }
-
-        // if (onViewHistory) {
-        //     onViewHistory(session.visitorId);
-        // }
     };
 
     const totalDurationSecs = sessions.reduce((acc, s) => acc + (s.chatDurationSeconds || 0), 0);
     const avgDurationMins = sessions.length > 0 ? (totalDurationSecs / sessions.length / 60).toFixed(1) : '0';
     const totalChatsCount = sessions.length || liveStats.totalChats || 0;
-    
-// 🟢 Dynamic Weekly Data Calculation based on Session Timestamps
-    const weeklyData = [0, 0, 0, 0, 0, 0, 0]; // Mon to Sun
+
+    const weeklyData = [0, 0, 0, 0, 0, 0, 0];
     sessions.forEach(s => {
         if (s.createdAt) {
             const d = new Date(s.createdAt);
-            const day = d.getDay(); // 0: Sun, 1: Mon, 2: Tue, 3: Wed, 4: Thu, 5: Fri, 6: Sat
-            // Map JS day to Mon=0 ... Sun=6
-            const index = day === 0 ? 6 : day - 1; 
-            weeklyData[index] += 1; // Count sessions per day
+            const day = d.getDay();
+            const index = day === 0 ? 6 : day - 1;
+            weeklyData[index] += 1;
         }
     });
 
-    // Fallbackagar sessions mein date na ho lekin totalChatsCount ho
     if (sessions.length === 0 && totalChatsCount > 0) {
         const todayIndex = (() => {
             const d = new Date();
@@ -101,12 +210,12 @@ export default function OverviewTab({ stats, analyticsSessions, onLogout, onView
         })();
         weeklyData[todayIndex] = totalChatsCount;
     }
-    
+
     const lineChartData = {
         labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
         datasets: [{
             label: 'Queries & Sync Events',
-            data: weeklyData, // 🟢 Now dynamic based on actual chat days
+            data: weeklyData,
             borderColor: '#0ea5e9',
             backgroundColor: 'rgba(14, 165, 233, 0.1)',
             tension: 0.4,
@@ -124,18 +233,115 @@ export default function OverviewTab({ stats, analyticsSessions, onLogout, onView
 
     return (
         <div className="space-y-6 max-w-7xl mx-auto">
-            {/* Header */}
+            {/* Header with Tenant Notification Bell & Logout */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h1 className="text-xl font-bold text-foreground tracking-tight">Welcome Back, {userName}</h1>
                     <p className="text-xs text-muted-foreground mt-0.5">Real-time enterprise metrics, active sessions & data monitoring from database</p>
                 </div>
-                {onLogout && (
-                    <button onClick={onLogout} className="px-3.5 py-2 bg-red-500/10 hover:bg-red-500 text-red-600 hover:text-white border border-red-500/20 rounded-lg text-xs font-semibold transition shadow-xs flex items-center gap-1.5 cursor-pointer">
-                        <LogOut className="w-3.5 h-3.5" /> Logout
-                    </button>
-                )}
+
+                <div className="flex items-center gap-2.5">
+                    {/* Tenant Notification Bell */}
+                    <div className="relative" ref={bellRef}>
+                        <button
+                            type="button"
+                            onClick={() => setBellOpen((prev) => !prev)}
+                            aria-label="Subscription & Quota Notifications"
+                            className="relative p-2.5 rounded-xl bg-card border border-border hover:bg-muted transition cursor-pointer shadow-xs flex items-center justify-center"
+                        >
+                            <Bell className="w-4 h-4 text-foreground" />
+                            {(urgentAlertCount > 0 || tenantNotifications.length > 0) && (
+                                <span
+                                    className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-black flex items-center justify-center ${
+                                        urgentAlertCount > 0 ? 'bg-red-600' : 'bg-sky-600'
+                                    }`}
+                                >
+                                    {urgentAlertCount > 0 ? urgentAlertCount : tenantNotifications.length}
+                                </span>
+                            )}
+                        </button>
+
+                        {bellOpen && (
+                            <div className="absolute right-0 mt-2.5 w-[340px] sm:w-[390px] bg-card border border-border rounded-2xl shadow-2xl z-50 overflow-hidden">
+                                <div className="p-3.5 border-b border-border bg-muted/40 flex items-center justify-between">
+                                    <div>
+                                        <h3 className="text-xs font-black uppercase tracking-wider text-foreground">
+                                            Plan & Quota Alerts
+                                        </h3>
+                                        {subscription && (
+                                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                                                {isUnlimited ? 'Unlimited chats' : `${remainingChatsDisplay} chats left`} • {subscription.daysRemaining ?? 0}d validity
+                                            </p>
+                                        )}
+                                    </div>
+                                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-sky-500/10 text-sky-500">
+                                        {subscription?.planType || 'Plan'}
+                                    </span>
+                                </div>
+
+                                <div className="max-h-[320px] overflow-y-auto divide-y divide-border">
+                                    {tenantNotifications.length > 0 ? (
+                                        tenantNotifications.map((item) => (
+                                            <div key={item.id} className="p-3.5 hover:bg-muted/30 transition space-y-1">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                                        {item.type === 'danger' && (
+                                                            <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                                                        )}
+                                                        {item.type === 'warning' && (
+                                                            <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                                        )}
+                                                        {(item.type === 'info' || item.type === 'log') && (
+                                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                                        )}
+                                                        <span>{item.title}</span>
+                                                    </span>
+                                                    <span className="text-[10px] text-muted-foreground shrink-0">
+                                                        {item.time}
+                                                    </span>
+                                                </div>
+                                                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                                    {item.message}
+                                                </p>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="p-6 text-center text-xs text-muted-foreground">
+                                            All good! No quota or expiry alerts right now.
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="p-2.5 border-t border-border bg-muted/30">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setBellOpen(false);
+                                            navigate('/dashboard/plans');
+                                        }}
+                                        className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                                    >
+                                        <span>Open Plans & Billing</span>
+                                        <ArrowUpRight className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {onLogout && (
+                        <button
+                            onClick={onLogout}
+                            className="px-3.5 py-2 bg-red-500/10 hover:bg-red-500 text-red-600 hover:text-white border border-red-500/20 rounded-lg text-xs font-semibold transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                            <LogOut className="w-3.5 h-3.5" /> Logout
+                        </button>
+                    )}
+                </div>
             </div>
+
+            {/* Quota / Expiry / Rollover Alert Banner */}
+            <QuotaAlertBanner subscription={subscription} billingPath="/dashboard/plans" />
 
             {/* 6 Enterprise Metric Cards Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -186,11 +392,17 @@ export default function OverviewTab({ stats, analyticsSessions, onLogout, onView
 
                 <div className="bg-card border border-border p-4 rounded-xl shadow-xs hover:shadow-sm transition">
                     <div className="flex justify-between items-start">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Total Chats</span>
-                        <div className="p-2 bg-amber-500/10 rounded-lg text-amber-500"><MessageSquare className="w-4 h-4" /></div>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Remaining Chats</span>
+                        <div className="p-2 bg-amber-500/10 rounded-lg text-amber-500">
+                            {isUnlimited ? <InfinityIcon className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
+                        </div>
                     </div>
-                    <div className="text-xl font-black text-foreground mt-2">{totalChatsCount}</div>
-                    <span className="text-[10px] text-muted-foreground mt-1 block">MongoDB Sessions</span>
+                    <div className="text-xl font-black text-foreground mt-2">
+                        {subscription ? remainingChatsDisplay : totalChatsCount}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground mt-1 block">
+                        {subscription ? `${subscription.daysRemaining ?? 0}d validity left` : 'MongoDB Sessions'}
+                    </span>
                 </div>
             </div>
 
@@ -230,8 +442,8 @@ export default function OverviewTab({ stats, analyticsSessions, onLogout, onView
                                         <td className="p-3.5 text-muted-foreground">{s.messageCount || 0} msgs</td>
                                         <td className="p-3.5 text-center text-muted-foreground">{s.createdAt ? new Date(s.createdAt).toLocaleString() : 'N/A'}</td>
                                         <td className="p-3.5 text-center">
-                                            <button 
-                                                onClick={() => handleViewHistory(s)} 
+                                            <button
+                                                onClick={() => handleViewHistory(s)}
                                                 className="px-3 py-1 bg-sky-500/10 text-sky-500 hover:bg-sky-500 hover:text-slate-950 font-bold rounded-lg text-xs transition cursor-pointer flex items-center gap-1 mx-auto"
                                             >
                                                 <History className="w-3.5 h-3.5" /> View History
@@ -267,7 +479,7 @@ export default function OverviewTab({ stats, analyticsSessions, onLogout, onView
                 </div>
             </div>
 
-            {/* 🟢 Visitor Chat History Modal Popup */}
+            {/* Visitor Chat History Modal Popup */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
                     <div className="bg-card border border-border w-full max-w-2xl rounded-2xl p-6 shadow-2xl space-y-6 max-h-[90vh] flex flex-col">
@@ -278,8 +490,8 @@ export default function OverviewTab({ stats, analyticsSessions, onLogout, onView
                                 </h2>
                                 <p className="text-xs font-mono text-muted-foreground mt-0.5">Session ID: {selectedSession?.visitorId}</p>
                             </div>
-                            <button 
-                                onClick={() => setIsModalOpen(false)} 
+                            <button
+                                onClick={() => setIsModalOpen(false)}
                                 className="p-1.5 bg-muted rounded-lg text-foreground hover:bg-muted-foreground/20 cursor-pointer transition"
                             >
                                 <X className="w-4 h-4" />
@@ -319,8 +531,8 @@ export default function OverviewTab({ stats, analyticsSessions, onLogout, onView
                                                 {msg.createdAt && <span>• {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
                                             </div>
                                             <div className={`max-w-[85%] p-3 rounded-xl text-xs leading-relaxed ${
-                                                isUser 
-                                                    ? 'bg-sky-500 text-white rounded-br-xs' 
+                                                isUser
+                                                    ? 'bg-sky-500 text-white rounded-br-xs'
                                                     : 'bg-muted text-foreground border border-border rounded-bl-xs'
                                             }`}>
                                                 {msg.message}
